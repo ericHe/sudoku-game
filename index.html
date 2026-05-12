@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>可爱数独乐园</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero-card">
+      <div class="hero-title">可爱数独乐园</div>
+      <p class="hero-subtitle">选择难度，开始头脑冒险！</p>
+      <div class="difficulty-row" role="group" aria-label="选择难度">
+        <button class="difficulty-button" data-level="easy">简单</button>
+        <button class="difficulty-button" data-level="normal">普通</button>
+        <button class="difficulty-button" data-level="hard">困难</button>
+      </div>
+    </header>
+
+    <section class="game-panel">
+      <div class="status-bar">
+        <div class="status-text">请选择一个难度开始游戏</div>
+        <button class="hint-button">提示</button>
+      </div>
+
+      <div class="board-wrapper">
+        <div id="sudokuBoard" class="sudoku-board" aria-label="数独棋盘"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="pickerOverlay" class="picker-overlay hidden" role="dialog" aria-modal="true" aria-label="数字选择">
+    <div class="picker-card">
+      <div class="picker-title">请选择数字</div>
+      <div class="picker-grid">
+        <button class="picker-number" data-number="1">1</button>
+        <button class="picker-number" data-number="2">2</button>
+        <button class="picker-number" data-number="3">3</button>
+        <button class="picker-number" data-number="4">4</button>
+        <button class="picker-number" data-number="5">5</button>
+        <button class="picker-number" data-number="6">6</button>
+        <button class="picker-number" data-number="7">7</button>
+        <button class="picker-number" data-number="8">8</button>
+        <button class="picker-number" data-number="9">9</button>
+      </div>
+      <button id="pickerCancel" class="picker-cancel">取消</button>
+    </div>
+  </div>
+
+  <div id="hintOverlay" class="hint-overlay hidden" role="alertdialog" aria-live="polite">
+    <div class="hint-card">
+      <div class="hint-title">提示</div>
+      <div id="hintMessage" class="hint-message"></div>
+      <button id="hintClose" class="hint-close">我知道了</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
