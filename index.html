@@ -33,6 +33,11 @@
   <div id="pickerOverlay" class="picker-overlay hidden" role="dialog" aria-modal="true" aria-label="数字选择">
     <div class="picker-card">
       <div class="picker-title">请选择数字</div>
+      <div class="picker-mode-row">
+        <button class="picker-mode active" data-mode="confirmed">确定</button>
+        <button class="picker-mode" data-mode="uncertain">待定</button>
+      </div>
+      <div id="pickerModeLabel" class="picker-mode-label">当前模式：确定</div>
       <div class="picker-grid">
         <button class="picker-number" data-number="1">1</button>
         <button class="picker-number" data-number="2">2</button>
@@ -44,6 +49,9 @@
         <button class="picker-number" data-number="8">8</button>
         <button class="picker-number" data-number="9">9</button>
       </div>
+      <div id="pickerHint" class="picker-hint">待定模式下点击数字可选多个候选数字。</div>
+      <button id="pickerApply" class="picker-apply hidden">应用待定</button>
+      <button id="pickerClear" class="picker-cancel">清除</button>
       <button id="pickerCancel" class="picker-cancel">取消</button>
     </div>
   </div>

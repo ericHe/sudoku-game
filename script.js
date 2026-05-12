@@ -5,13 +5,28 @@ const pickerOverlay = document.getElementById('pickerOverlay');
 const hintOverlay = document.getElementById('hintOverlay');
 const hintMessage = document.getElementById('hintMessage');
 const pickerCancel = document.getElementById('pickerCancel');
-const hintClose = document.getElementById('hintClose');
+const pickerModeButtons = document.querySelectorAll('.picker-mode');
+const pickerModeLabel = document.getElementById('pickerModeLabel');
+const pickerHint = document.getElementById('pickerHint');
+const pickerApply = document.getElementById('pickerApply');
+const pickerClear = document.getElementById('pickerClear');
 
 let currentBoard = [];
 let fixedCells = [];
 let selectedCell = null;
+let pickerMode = 'confirmed';
+let pickerTempCandidates = [];
 let hintTarget = null;
 let solutionBoard = [];
+
+function createCell(value, status = 'empty', candidates = []) {
+  return { value, status, candidates };
+}
+
+function getCellValue(row, col) {
+  const cell = currentBoard[row][col];
+  return cell.status === 'confirmed' || cell.status === 'fixed' ? cell.value : 0;
+}
 
 const difficultyMap = {
   easy: 42,
@@ -88,11 +103,18 @@ function removeCells(board, clues) {
 
 function startGame(level) {
   solutionBoard = createSolvedBoard();
-  currentBoard = removeCells(solutionBoard, difficultyMap[level]);
-  fixedCells = currentBoard.map((row) => row.map((value) => value !== 0));
+  const initialBoard = removeCells(solutionBoard, difficultyMap[level]);
+  fixedCells = initialBoard.map((row) => row.map((value) => value !== 0));
+  currentBoard = initialBoard.map((row, rowIndex) => row.map((value, colIndex) => {
+    if (value !== 0) return createCell(value, 'fixed');
+    return createCell('', 'empty');
+  }));
   selectedCell = null;
+  pickerMode = 'confirmed';
+  pickerTempCandidates = [];
   hintTarget = null;
   hideHint();
+  updatePickerState();
   statusText.textContent = `已选择${difficultyLabels[level]}难度。点击空格填写数字，或者使用提示。`;
   renderBoard();
 }
@@ -100,16 +122,36 @@ function startGame(level) {
 function renderBoard() {
   boardElement.innerHTML = '';
   currentBoard.forEach((row, rowIndex) => {
-    row.forEach((value, colIndex) => {
+    row.forEach((cellData, colIndex) => {
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = 'sudoku-cell';
       cell.dataset.row = rowIndex;
       cell.dataset.col = colIndex;
       cell.dataset.fixed = fixedCells[rowIndex][colIndex];
-      cell.textContent = value === 0 ? '' : value;
-      if (value === 0) {
+      if (cellData.status === 'uncertain') {
+        cell.textContent = cellData.candidates.join(' ');
+      } else if (cellData.status === 'confirmed' || cellData.status === 'fixed') {
+        cell.textContent = cellData.value;
+      } else {
+        cell.textContent = '';
+      }
+      if (cellData.status === 'empty') {
         cell.classList.add('empty');
+      }
+      if (cellData.status === 'uncertain') {
+        cell.classList.add('uncertain');
+      }
+      if (cellData.status === 'confirmed') {
+        cell.classList.add('confirmed');
+      }
+      if (cellData.status === 'fixed') {
+        cell.classList.add('fixed');
+      }
+      if (cellData.status === 'confirmed' || cellData.status === 'fixed') {
+        if (!isMoveValid(rowIndex, colIndex, cellData.value)) {
+          cell.classList.add('invalid');
+        }
       }
       if (selectedCell && selectedCell.row === rowIndex && selectedCell.col === colIndex) {
         cell.classList.add('selected');
@@ -131,6 +173,12 @@ function renderBoard() {
   });
 }
 
+function getPossibleValuesForCell(row, col) {
+  const cellData = currentBoard[row][col];
+  if (cellData.status === 'empty' || cellData.status === 'uncertain') return getCandidates(row, col);
+  return getCandidates(row, col);
+}
+
 function handleCellClick(row, col) {
   if (fixedCells[row][col]) {
     statusText.textContent = '这是原始数字，不能修改哦。';
@@ -142,6 +190,8 @@ function handleCellClick(row, col) {
 }
 
 function showPicker() {
+  pickerTempCandidates = [];
+  updatePickerState();
   pickerOverlay.classList.remove('hidden');
 }
 
@@ -153,14 +203,18 @@ function updateCell(value) {
   if (!selectedCell) return;
   const { row, col } = selectedCell;
   if (value === 0) {
-    currentBoard[row][col] = 0;
+    currentBoard[row][col] = createCell('', 'empty');
     statusText.textContent = '已清除这个格子。';
-  } else if (isMoveValid(row, col, value)) {
-    currentBoard[row][col] = value;
-    selectedCell = null;
-    statusText.textContent = `已填入 ${value}。继续加油！`;
-  } else {
-    statusText.textContent = `数字 ${value} 不符合规则，请再试一次。`;
+    pickerTempCandidates = [];
+  } else if (pickerMode === 'confirmed') {
+    if (isMoveValid(row, col, value)) {
+      currentBoard[row][col] = createCell(value, 'confirmed');
+      selectedCell = null;
+      statusText.textContent = `已填入 ${value}，这个数字现在是确定的。`;
+    } else {
+      currentBoard[row][col] = createCell(value, 'confirmed');
+      statusText.textContent = `数字 ${value} 与现有数字冲突，请检查。`;
+    }
   }
   hidePicker();
   renderBoard();
@@ -169,17 +223,35 @@ function updateCell(value) {
   }
 }
 
+function applyPendingCandidates() {
+  if (!selectedCell) return;
+  const { row, col } = selectedCell;
+  if (pickerTempCandidates.length === 0) {
+    statusText.textContent = '请选择至少一个待定数字。';
+    return;
+  }
+  currentBoard[row][col] = createCell('', 'uncertain', [...pickerTempCandidates]);
+  selectedCell = null;
+  statusText.textContent = `已标记为待定：${pickerTempCandidates.join('、')}。`;
+  pickerTempCandidates = [];
+  hidePicker();
+  renderBoard();
+}
+
 function isMoveValid(row, col, value) {
   if (value === 0) return true;
   for (let i = 0; i < 9; i += 1) {
-    if (currentBoard[row][i] === value && i !== col) return false;
-    if (currentBoard[i][col] === value && i !== row) return false;
+    const rowValue = getCellValue(row, i);
+    const colValue = getCellValue(i, col);
+    if (rowValue === value && i !== col) return false;
+    if (colValue === value && i !== row) return false;
   }
   const startRow = Math.floor(row / 3) * 3;
   const startCol = Math.floor(col / 3) * 3;
   for (let r = startRow; r < startRow + 3; r += 1) {
     for (let c = startCol; c < startCol + 3; c += 1) {
-      if (currentBoard[r][c] === value && (r !== row || c !== col)) return false;
+      const boxValue = getCellValue(r, c);
+      if (boxValue === value && (r !== row || c !== col)) return false;
     }
   }
   return true;
@@ -191,7 +263,7 @@ function sameBox(row1, col1, row2, col2) {
 
 function getCandidates(row, col) {
   const candidates = [];
-  if (currentBoard[row][col] !== 0) return candidates;
+  const currentValue = getCellValue(row, col);
   for (let value = 1; value <= 9; value += 1) {
     if (isMoveValid(row, col, value)) {
       candidates.push(value);
@@ -205,13 +277,17 @@ function getMissingNumbers(values) {
 }
 
 function getRowMissing(row) {
-  return getMissingNumbers(currentBoard[row].filter(Boolean));
+  const used = currentBoard[row]
+    .filter((cell) => cell.status === 'confirmed' || cell.status === 'fixed')
+    .map((cell) => cell.value);
+  return getMissingNumbers(used);
 }
 
 function getColMissing(col) {
   const used = [];
   for (let r = 0; r < 9; r += 1) {
-    if (currentBoard[r][col]) used.push(currentBoard[r][col]);
+    const cell = currentBoard[r][col];
+    if (cell.status === 'confirmed' || cell.status === 'fixed') used.push(cell.value);
   }
   return getMissingNumbers(used);
 }
@@ -222,29 +298,30 @@ function getBoxMissing(row, col) {
   const startCol = Math.floor(col / 3) * 3;
   for (let r = startRow; r < startRow + 3; r += 1) {
     for (let c = startCol; c < startCol + 3; c += 1) {
-      if (currentBoard[r][c]) used.push(currentBoard[r][c]);
+      const cell = currentBoard[r][c];
+      if (cell.status === 'confirmed' || cell.status === 'fixed') used.push(cell.value);
     }
   }
   return getMissingNumbers(used);
 }
 
 function showHint() {
-  const emptyCells = [];
+  const candidatesList = [];
   for (let row = 0; row < 9; row += 1) {
     for (let col = 0; col < 9; col += 1) {
-      if (currentBoard[row][col] === 0) {
-        const candidates = getCandidates(row, col);
-        if (candidates.length > 0) {
-          emptyCells.push({ row, col, candidates });
-        }
+      const cell = currentBoard[row][col];
+      if (cell.status === 'confirmed' || cell.status === 'fixed') continue;
+      const candidates = getCandidates(row, col);
+      if (candidates.length > 0) {
+        candidatesList.push({ row, col, candidates });
       }
     }
   }
-  if (emptyCells.length === 0) {
+  if (candidatesList.length === 0) {
     hintMessage.textContent = '恭喜你，棋盘已经完成，无需提示。';
   } else {
-    emptyCells.sort((a, b) => a.candidates.length - b.candidates.length);
-    const choice = emptyCells[0];
+    candidatesList.sort((a, b) => a.candidates.length - b.candidates.length);
+    const choice = candidatesList[0];
     hintTarget = choice;
     const { row, col, candidates } = choice;
     const candidateText = candidates.join('、');
@@ -255,7 +332,7 @@ function showHint() {
       `这一行还缺少：<strong>${rowMissing}</strong>。<br />` +
       `这一列还缺少：<strong>${colMissing}</strong>。<br />` +
       `这个 3×3 小格还缺少：<strong>${boxMissing}</strong>。<br />` +
-      `所以这个位置最合适的数字是：<strong>${candidateText}</strong>。`;
+      `所以这个位置最适合的候选数字是：<strong>${candidateText}</strong>。`;
   }
   hintOverlay.classList.remove('hidden');
   renderBoard();
@@ -270,10 +347,32 @@ function hideHint() {
 function isComplete() {
   for (let row = 0; row < 9; row += 1) {
     for (let col = 0; col < 9; col += 1) {
-      if (currentBoard[row][col] === 0) return false;
+      const cell = currentBoard[row][col];
+      if (cell.status !== 'confirmed' && cell.status !== 'fixed') return false;
     }
   }
   return true;
+}
+
+function resetPickerNumbers() {
+  document.querySelectorAll('.picker-number').forEach((button) => {
+    button.classList.remove('active');
+  });
+}
+
+function updatePickerState() {
+  pickerModeLabel.textContent = `当前模式：${pickerMode === 'confirmed' ? '确定' : '待定'}`;
+  pickerHint.textContent = pickerMode === 'confirmed'
+    ? '点击数字即可填入一个确定值。' 
+    : '点击数字可选多个待定候选，完成后点击“应用待定”。';
+  pickerApply.classList.toggle('hidden', pickerMode !== 'uncertain');
+  if (pickerMode === 'confirmed') {
+    pickerTempCandidates = [];
+  }
+  pickerModeButtons.forEach((button) => {
+    button.classList.toggle('active', button.dataset.mode === pickerMode);
+  });
+  resetPickerNumbers();
 }
 
 function attachEvents() {
@@ -290,12 +389,35 @@ function attachEvents() {
   });
 
   pickerCancel.addEventListener('click', hidePicker);
+  pickerClear.addEventListener('click', () => updateCell(0));
   hintClose.addEventListener('click', hideHint);
   hintButton.addEventListener('click', showHint);
+  pickerApply.addEventListener('click', applyPendingCandidates);
+
+  pickerModeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      pickerMode = button.dataset.mode;
+      pickerTempCandidates = [];
+      updatePickerState();
+    });
+  });
 
   document.querySelectorAll('.picker-number').forEach((button) => {
     button.addEventListener('click', () => {
-      updateCell(Number(button.dataset.number));
+      const number = Number(button.dataset.number);
+      if (pickerMode === 'confirmed') {
+        updateCell(number);
+      } else {
+        const index = pickerTempCandidates.indexOf(number);
+        if (index === -1) {
+          pickerTempCandidates.push(number);
+          button.classList.add('active');
+        } else {
+          pickerTempCandidates.splice(index, 1);
+          button.classList.remove('active');
+        }
+        pickerHint.textContent = `待定候选：${pickerTempCandidates.join('、') || '无'}。点击继续选择或点击应用待定。`;
+      }
     });
   });
 }
