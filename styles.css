@@ -292,6 +292,10 @@ body {
     align-items: stretch;
   }
 
+  .board-wrapper {
+    padding-bottom: 180px;
+  }
+
   .sudoku-board {
     gap: 3px;
   }
